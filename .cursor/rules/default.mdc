@@ -1,0 +1,6 @@
+---
+alwaysApply: true
+---
+
+- window.alert은 쓰지 않고 toast 사용
+- 모달창을 구현했을때는 ESC누르면 모달이 닫히게 구현네
