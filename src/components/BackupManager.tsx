@@ -35,6 +35,7 @@ interface BackupData {
 export default function BackupManager() {
   const [databases, setDatabases] = useState<Database[]>([]);
   const [backups, setBackups] = useState<Backup[]>([]);
+  const [filteredBackups, setFilteredBackups] = useState<Backup[]>([]);
   const [backupStats, setBackupStats] = useState<{ [database: string]: BackupStats }>({});
   const [maxBackupsPerDatabase, setMaxBackupsPerDatabase] = useState<number>(7);
   const [loading, setLoading] = useState(true);
@@ -46,6 +47,7 @@ export default function BackupManager() {
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [restoreLogs, setRestoreLogs] = useState<string[]>([]);
   const [showRestoreLogs, setShowRestoreLogs] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   // Toast 상태
   const [toast, setToast] = useState<{
@@ -75,7 +77,19 @@ export default function BackupManager() {
     fetchBackups();
   }, []);
 
-  // ESC 키로 모달 닫기
+  // 검색어에 따른 백업 필터링
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setFilteredBackups(backups);
+    } else {
+      const filtered = backups.filter(backup => 
+        backup.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredBackups(filtered);
+    }
+  }, [searchTerm, backups]);
+
+  // ESC 키로 모달 닫기 및 검색 초기화
   useEffect(() => {
     const handleEscKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -87,12 +101,12 @@ export default function BackupManager() {
           setShowRestoreModal(false);
           setSelectedBackup(null);
         }
+        // 검색어 초기화
+        setSearchTerm('');
       }
     };
 
-    if (showBackupModal || showRestoreModal) {
-      document.addEventListener('keydown', handleEscKey);
-    }
+    document.addEventListener('keydown', handleEscKey);
 
     return () => {
       document.removeEventListener('keydown', handleEscKey);
@@ -117,6 +131,7 @@ export default function BackupManager() {
       if (response.ok) {
         const data = await response.json();
         setBackups(data.backups);
+        setFilteredBackups(data.backups);
         setBackupStats(data.backupStats);
         setMaxBackupsPerDatabase(data.maxBackupsPerDatabase);
       }
@@ -281,14 +296,55 @@ export default function BackupManager() {
             </div>
           </div>
         )}
+
+        {/* 백업 검색 */}
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center space-x-4">
+            <div className="flex-1">
+              <label htmlFor="backup-search" className="block text-sm font-medium text-gray-700 mb-2">
+                백업 이름으로 검색
+              </label>
+              <div className="relative">
+                <input
+                  id="backup-search"
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="백업 이름을 입력하세요..."
+                  className="w-full px-3 py-2 pl-10 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex items-end">
+              <div className="text-sm text-gray-500">
+                {filteredBackups.length} / {backups.length} 백업
+              </div>
+            </div>
+          </div>
+        </div>
         
         <ul className="divide-y divide-gray-200">
-          {backups.length === 0 ? (
+          {filteredBackups.length === 0 ? (
             <li className="px-6 py-4 text-center text-gray-500">
-              백업이 없습니다.
+              {backups.length === 0 ? '백업이 없습니다.' : '검색 결과가 없습니다.'}
             </li>
           ) : (
-            backups.map((backup) => {
+            filteredBackups.map((backup) => {
               const databaseName = backup.name.split('_')[0];
               const isKept = backupStats[databaseName]?.kept > 0;
               
