@@ -56,7 +56,8 @@ export async function POST(request: NextRequest) {
     }
 
     const backupDir = process.env.BACKUP_DIR || path.join(path.resolve(process.cwd()), 'backups');
-    const backupPath = path.join(backupDir, backupName);
+    const allBackupDir = path.join(backupDir, 'allbackup');
+    const backupPath = path.join(allBackupDir, backupName);
     
     // 백업 폴더가 존재하는지 확인
     if (!fs.existsSync(backupPath)) {

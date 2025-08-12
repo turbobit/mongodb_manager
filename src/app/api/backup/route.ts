@@ -54,19 +54,21 @@ export async function POST(request: NextRequest) {
     // 프로젝트 루트 디렉토리 찾기 (Next.js API route 기준)
     const projectRoot = path.resolve(process.cwd());
     const backupDir = process.env.BACKUP_DIR || path.join(projectRoot, 'backups');
+    const allBackupDir = path.join(backupDir, 'allbackup');
     
     console.log('현재 작업 디렉토리:', process.cwd());
     console.log('프로젝트 루트:', projectRoot);
     console.log('백업 디렉토리:', backupDir);
+    console.log('전체 백업 디렉토리:', allBackupDir);
     console.log('환경 변수 BACKUP_DIR:', process.env.BACKUP_DIR);
     
-    // 백업 디렉토리 생성
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
+    // 전체 백업 디렉토리 생성
+    if (!fs.existsSync(allBackupDir)) {
+      fs.mkdirSync(allBackupDir, { recursive: true });
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupPath = path.join(backupDir, `${databaseName}_${timestamp}`);
+    const backupPath = path.join(allBackupDir, `${databaseName}_${timestamp}`);
     
     // MongoDB 인증 파라미터 가져오기
     const authParams = getMongoAuthParams();
@@ -90,7 +92,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 백업 완료 후 오래된 백업 정리 (각 데이터베이스별 최대 7개 유지)
-    await cleanupOldBackups(databaseName, backupDir);
+    await cleanupOldBackups(databaseName, allBackupDir);
 
     return NextResponse.json({ 
       success: true, 
@@ -150,15 +152,16 @@ export async function GET(request: NextRequest) {
     }
 
     const backupDir = process.env.BACKUP_DIR || path.join(path.resolve(process.cwd()), 'backups');
+    const allBackupDir = path.join(backupDir, 'allbackup');
     
-    if (!fs.existsSync(backupDir)) {
+    if (!fs.existsSync(allBackupDir)) {
       return NextResponse.json({ backups: [], backupStats: {} });
     }
 
-    const backupFolders = fs.readdirSync(backupDir, { withFileTypes: true })
+    const backupFolders = fs.readdirSync(allBackupDir, { withFileTypes: true })
       .filter(dirent => dirent.isDirectory())
       .map(dirent => {
-        const stats = fs.statSync(path.join(backupDir, dirent.name));
+        const stats = fs.statSync(path.join(allBackupDir, dirent.name));
         return {
           name: dirent.name,
           createdAt: stats.birthtime,

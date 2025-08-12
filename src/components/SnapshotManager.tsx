@@ -6,8 +6,11 @@ import { generateShortUUIDv7 } from '@/lib/uuid';
 
 interface Snapshot {
   name: string;
+  databaseName: string;
+  collectionName: string;
   snapshotName: string;
   createdAt: Date;
+  size: number;
 }
 
 interface Database {
@@ -187,7 +190,7 @@ export default function SnapshotManager() {
       return;
     }
 
-    if (!confirm('정말로 이 스냅샷으로 롤백하시겠습니까? 현재 데이터는 삭제됩니다.')) {
+    if (!confirm('정말로 이 스냅샷으로 복원하시겠습니까? 현재 데이터는 삭제됩니다.')) {
       return;
     }
 
@@ -205,7 +208,7 @@ export default function SnapshotManager() {
       });
 
       if (!response.ok) {
-        throw new Error('롤백에 실패했습니다.');
+        throw new Error('복원에 실패했습니다.');
       }
 
       const data = await response.json();
@@ -213,12 +216,42 @@ export default function SnapshotManager() {
       setShowRollbackModal(false);
       setSelectedSnapshot('');
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '롤백 중 오류가 발생했습니다.', 'error');
+      showToast(error instanceof Error ? error.message : '복원 중 오류가 발생했습니다.', 'error');
     }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleString('ko-KR');
+  };
+
+  const handleDeleteSnapshot = async (snapshotName: string) => {
+    if (!confirm('정말로 이 스냅샷을 삭제하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/snapshot?name=${encodeURIComponent(snapshotName)}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('스냅샷 삭제에 실패했습니다.');
+      }
+
+      const data = await response.json();
+      showToast(data.message, 'success');
+      fetchSnapshots(selectedDatabase, selectedCollection);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '스냅샷 삭제 중 오류가 발생했습니다.', 'error');
+    }
   };
 
   if (loading) {
@@ -304,18 +337,26 @@ export default function SnapshotManager() {
                       {snapshot.snapshotName}
                     </div>
                     <div className="text-sm text-gray-500">
-                      생성일: {formatDate(snapshot.createdAt)}
+                      {snapshot.databaseName}.{snapshot.collectionName} | 생성일: {formatDate(snapshot.createdAt)} | 크기: {formatBytes(snapshot.size)}
                     </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      setSelectedSnapshot(snapshot.snapshotName);
-                      setShowRollbackModal(true);
-                    }}
-                    className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
-                  >
-                    롤백
-                  </button>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => {
+                        setSelectedSnapshot(snapshot.name);
+                        setShowRollbackModal(true);
+                      }}
+                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors"
+                    >
+                      복원
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSnapshot(snapshot.name)}
+                      className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
+                    >
+                      삭제
+                    </button>
+                  </div>
                 </div>
               </li>
             ))
@@ -410,26 +451,26 @@ export default function SnapshotManager() {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">스냅샷 롤백</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">스냅샷 복원</h3>
               
-              <div className="mb-4">
-                <p className="text-sm text-gray-600">
-                  <strong>경고:</strong> 이 작업은 현재 컬렉션의 모든 데이터를 삭제하고 
-                  스냅샷 데이터로 교체합니다. 되돌릴 수 없습니다.
-                </p>
-              </div>
+                              <div className="mb-4">
+                  <p className="text-sm text-gray-600">
+                    <strong>경고:</strong> 이 작업은 현재 컬렉션의 모든 데이터를 삭제하고 
+                    스냅샷 데이터로 교체합니다. 되돌릴 수 없습니다.
+                  </p>
+                </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  롤백할 스냅샷
-                </label>
-                <input
-                  type="text"
-                  value={selectedSnapshot}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                />
-              </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    복원할 스냅샷
+                  </label>
+                  <input
+                    type="text"
+                    value={selectedSnapshot}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                  />
+                </div>
 
               <div className="flex justify-end space-x-3">
                 <button
@@ -441,12 +482,12 @@ export default function SnapshotManager() {
                 >
                   취소
                 </button>
-                <button
-                  onClick={handleRollback}
-                  className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
-                >
-                  롤백 실행
-                </button>
+                                  <button
+                    onClick={handleRollback}
+                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+                  >
+                    복원 실행
+                  </button>
               </div>
             </div>
           </div>
