@@ -5,6 +5,7 @@ alwaysApply: true
 - window.alert은 쓰지 않고 toast 사용 ( @/components/Toast 사용 )
 - 모달창을 구현했을때는 ESC누르면 모달이 닫히게 구현네
 - 몽고 디비 인증정보는 getMongoAuthParams() 함수를 이용해 구현하고 있다.
+- 텍스트를 쓸때 react/no-unescaped-entities 에러가 발생하지 않도록 한다.
 
 
 # api 엔드포인트 인증조건

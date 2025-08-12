@@ -19,9 +19,10 @@ export interface ApiHistoryFilters {
   search?: string;
   endpoint?: string;
   method?: string;
+  status?: string;
   startDate?: string;
   endDate?: string;
-  sortBy?: 'timestamp' | 'action' | 'actionType' | 'target' | 'method';
+  sortBy?: 'timestamp' | 'action' | 'actionType' | 'target' | 'method' | 'status' | 'endpoint';
   sortOrder?: 'asc' | 'desc';
   page?: number;
   limit?: number;

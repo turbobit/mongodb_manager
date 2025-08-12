@@ -120,7 +120,7 @@ export default function ApiPage() {
                 <span className="text-sm font-medium text-gray-700">cURL 예시:</span>
                 <div className="flex items-center mt-1">
                   <code className="bg-white px-3 py-2 rounded border text-sm font-mono flex-1">
-                    curl -X POST "http://localhost:3000/api/cron/backup?database={databaseName}"
+                    curl -X POST &quot;http://localhost:3000/api/cron/backup?database={databaseName}&quot;
                   </code>
                   <button
                     onClick={() => copyToClipboard(`curl -X POST "http://localhost:3000/api/cron/backup?database=${databaseName}"`)}
@@ -231,7 +231,7 @@ export default function ApiPage() {
                   <p><strong>1. 크론잡 편집:</strong> <code className="bg-white px-2 py-1 rounded">crontab -e</code></p>
                   <p><strong>2. 다음 라인 추가:</strong></p>
                   <div className="bg-white p-3 rounded border">
-                    <code>0 2 * * * curl -X POST "http://localhost:3000/api/cron/backup?database={databaseName}"</code>
+                    <code>0 2 * * * curl -X POST &quot;http://localhost:3000/api/cron/backup?database={databaseName}&quot;</code>
                   </div>
                   <p><strong>3. 저장 후 종료:</strong> <code className="bg-white px-2 py-1 rounded">Ctrl+X, Y, Enter</code></p>
                   <p><strong>4. 크론잡 확인:</strong> <code className="bg-white px-2 py-1 rounded">crontab -l</code></p>

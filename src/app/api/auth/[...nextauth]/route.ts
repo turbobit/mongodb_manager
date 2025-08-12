@@ -35,7 +35,6 @@ const handler = NextAuth({
   pages: {
     signIn: '/auth/signin',
     error: '/auth/error',
-    accessDenied: '/auth/access-denied',
   },
   debug: process.env.NODE_ENV === 'development',
 });

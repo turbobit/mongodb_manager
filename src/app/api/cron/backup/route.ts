@@ -118,8 +118,10 @@ export async function POST(request: NextRequest) {
       ip === '127.0.0.1' || 
       ip === '::1' || 
       ip === 'localhost' ||
-      ip.includes('127.0.0.1') ||
-      ip.includes('localhost')
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      ip!.includes('127.0.0.1') ||
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      ip!.includes('localhost')
     );
     
     // 외부 접근 차단
@@ -294,8 +296,10 @@ export async function GET(request: NextRequest) {
     ip === '127.0.0.1' || 
     ip === '::1' || 
     ip === 'localhost' ||
-    ip.includes('127.0.0.1') ||
-    ip.includes('localhost')
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    ip!.includes('127.0.0.1') ||
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    ip!.includes('localhost')
   );
   
   // 외부 접근 차단
