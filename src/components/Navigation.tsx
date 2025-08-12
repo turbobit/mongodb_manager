@@ -14,9 +14,21 @@ export default function Navigation() {
   const router = useRouter();
 
   const getActiveTab = () => {
-    if (pathname === '/dashboard') return 'dashboard';
-    const currentTab = tabs.find(tab => pathname.startsWith(tab.path));
-    return currentTab?.id || 'dashboard';
+    // 각 탭의 경로와 정확히 매칭
+    if (pathname === '/dashboard') {
+      return 'dashboard';
+    }
+    if (pathname === '/dashboard/backup') {
+      return 'backup';
+    }
+    if (pathname === '/dashboard/snapshot') {
+      return 'snapshot';
+    }
+    if (pathname === '/dashboard/dummy') {
+      return 'dummy';
+    }
+    
+    return 'dashboard';
   };
 
   const handleTabClick = (path: string) => {

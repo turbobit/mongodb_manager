@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Toast from './Toast';
 
 interface Backup {
   name: string;
@@ -19,16 +20,55 @@ interface Collection {
   type: string;
 }
 
+interface BackupStats {
+  total: number;
+  kept: number;
+  deleted: number;
+}
+
+interface BackupData {
+  backups: Backup[];
+  backupStats: { [database: string]: BackupStats };
+  maxBackupsPerDatabase: number;
+}
+
 export default function BackupManager() {
   const [databases, setDatabases] = useState<Database[]>([]);
   const [backups, setBackups] = useState<Backup[]>([]);
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const [backupStats, setBackupStats] = useState<{ [database: string]: BackupStats }>({});
+  const [maxBackupsPerDatabase, setMaxBackupsPerDatabase] = useState<number>(7);
   const [loading, setLoading] = useState(true);
   const [backupLoading, setBackupLoading] = useState(false);
   const [selectedDatabase, setSelectedDatabase] = useState('');
-  const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   const [showBackupModal, setShowBackupModal] = useState(false);
-  const [backupType, setBackupType] = useState<'full' | 'partial'>('full');
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [selectedBackup, setSelectedBackup] = useState<Backup | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreLogs, setRestoreLogs] = useState<string[]>([]);
+  const [showRestoreLogs, setShowRestoreLogs] = useState(false);
+  
+  // Toast 상태
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+    isVisible: boolean;
+  }>({
+    message: '',
+    type: 'info',
+    isVisible: false,
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({
+      message,
+      type,
+      isVisible: true,
+    });
+  };
+
+  const hideToast = () => {
+    setToast(prev => ({ ...prev, isVisible: false }));
+  };
 
   useEffect(() => {
     fetchDatabases();
@@ -38,22 +78,26 @@ export default function BackupManager() {
   // ESC 키로 모달 닫기
   useEffect(() => {
     const handleEscKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && showBackupModal) {
-        setShowBackupModal(false);
-        setSelectedDatabase('');
-        setSelectedCollections([]);
-        setBackupType('full');
+      if (event.key === 'Escape') {
+        if (showBackupModal) {
+          setShowBackupModal(false);
+          setSelectedDatabase('');
+        }
+        if (showRestoreModal) {
+          setShowRestoreModal(false);
+          setSelectedBackup(null);
+        }
       }
     };
 
-    if (showBackupModal) {
+    if (showBackupModal || showRestoreModal) {
       document.addEventListener('keydown', handleEscKey);
     }
 
     return () => {
       document.removeEventListener('keydown', handleEscKey);
     };
-  }, [showBackupModal]);
+  }, [showBackupModal, showRestoreModal]);
 
   const fetchDatabases = async () => {
     try {
@@ -67,25 +111,14 @@ export default function BackupManager() {
     }
   };
 
-  const fetchCollections = async (databaseName: string) => {
-    try {
-      const response = await fetch(`/api/collections?database=${databaseName}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCollections(data.collections);
-      }
-    } catch (error) {
-      console.error('컬렉션 목록 조회 실패:', error);
-      setCollections([]);
-    }
-  };
-
   const fetchBackups = async () => {
     try {
       const response = await fetch('/api/backup');
       if (response.ok) {
         const data = await response.json();
         setBackups(data.backups);
+        setBackupStats(data.backupStats);
+        setMaxBackupsPerDatabase(data.maxBackupsPerDatabase);
       }
     } catch (error) {
       console.error('백업 목록 조회 실패:', error);
@@ -94,32 +127,9 @@ export default function BackupManager() {
     }
   };
 
-  const handleDatabaseChange = (databaseName: string) => {
-    setSelectedDatabase(databaseName);
-    setSelectedCollections([]);
-    if (databaseName) {
-      fetchCollections(databaseName);
-    } else {
-      setCollections([]);
-    }
-  };
-
-  const handleCollectionToggle = (collectionName: string) => {
-    setSelectedCollections(prev => 
-      prev.includes(collectionName)
-        ? prev.filter(name => name !== collectionName)
-        : [...prev, collectionName]
-    );
-  };
-
   const handleBackup = async () => {
     if (!selectedDatabase) {
-      alert('데이터베이스를 선택해주세요.');
-      return;
-    }
-
-    if (backupType === 'partial' && selectedCollections.length === 0) {
-      alert('백업할 컬렉션을 선택해주세요.');
+      showToast('데이터베이스를 선택해주세요.', 'error');
       return;
     }
 
@@ -132,7 +142,6 @@ export default function BackupManager() {
         },
         body: JSON.stringify({
           databaseName: selectedDatabase,
-          collections: backupType === 'partial' ? selectedCollections : undefined,
         }),
       });
 
@@ -141,16 +150,74 @@ export default function BackupManager() {
       }
 
       const data = await response.json();
-      alert(data.message);
+      showToast(data.message, 'success');
       setShowBackupModal(false);
       setSelectedDatabase('');
-      setSelectedCollections([]);
-      setBackupType('full');
       fetchBackups(); // 백업 목록 새로고침
     } catch (error) {
-      alert(error instanceof Error ? error.message : '백업 중 오류가 발생했습니다.');
+      showToast(error instanceof Error ? error.message : '백업 중 오류가 발생했습니다.', 'error');
     } finally {
       setBackupLoading(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!selectedBackup) {
+      showToast('복원할 백업을 선택해주세요.', 'error');
+      return;
+    }
+
+    // 백업명에서 데이터베이스명 추출
+    const databaseName = selectedBackup.name.split('_')[0];
+
+    setRestoreLoading(true);
+    setRestoreLogs([]);
+    setShowRestoreLogs(true);
+    
+    // 복원 시작 로그 추가
+    const startTime = new Date();
+    setRestoreLogs(prev => [...prev, `[${startTime.toLocaleTimeString()}] 복원 작업 시작: ${databaseName} 데이터베이스`]);
+    
+    try {
+      const response = await fetch('/api/backup/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          backupName: selectedBackup.name,
+          databaseName: databaseName,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '복원에 실패했습니다.');
+      }
+
+      const data = await response.json();
+      
+      // 복원 완료 로그 추가
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      setRestoreLogs(prev => [...prev, `[${endTime.toLocaleTimeString()}] 복원 작업 완료 (총 소요시간: ${duration}ms)`]);
+      
+      showToast(data.message, 'success');
+      
+      // 3초 후 모달 닫기
+      setTimeout(() => {
+        setShowRestoreModal(false);
+        setSelectedBackup(null);
+        setShowRestoreLogs(false);
+        setRestoreLogs([]);
+      }, 3000);
+      
+    } catch (error) {
+      const errorTime = new Date();
+      setRestoreLogs(prev => [...prev, `[${errorTime.toLocaleTimeString()}] 오류 발생: ${error instanceof Error ? error.message : '알 수 없는 오류'}`]);
+      showToast(error instanceof Error ? error.message : '복원 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setRestoreLoading(false);
     }
   };
 
@@ -190,25 +257,70 @@ export default function BackupManager() {
       <div className="bg-white shadow overflow-hidden sm:rounded-md">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium text-gray-900">백업 히스토리</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            각 데이터베이스별로 최대 {maxBackupsPerDatabase}개의 백업을 유지합니다.
+          </p>
         </div>
+        
+        {/* 백업 통계 */}
+        {Object.keys(backupStats).length > 0 && (
+          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">백업 통계</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.entries(backupStats).map(([database, stats]) => (
+                <div key={database} className="bg-white p-3 rounded-lg border">
+                  <div className="text-sm font-medium text-gray-900">{database}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    총 {stats.total}개 중 {stats.kept}개 유지
+                    {stats.deleted > 0 && (
+                      <span className="text-red-500 ml-1">({stats.deleted}개 자동 삭제됨)</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
         <ul className="divide-y divide-gray-200">
           {backups.length === 0 ? (
             <li className="px-6 py-4 text-center text-gray-500">
               백업이 없습니다.
             </li>
           ) : (
-            backups.map((backup) => (
-              <li key={backup.name} className="px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{backup.name}</div>
-                    <div className="text-sm text-gray-500">
-                      생성일: {formatDate(backup.createdAt)} | 크기: {formatBytes(backup.size)}
+            backups.map((backup) => {
+              const databaseName = backup.name.split('_')[0];
+              const isKept = backupStats[databaseName]?.kept > 0;
+              
+              return (
+                <li key={backup.name} className="px-6 py-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900 flex items-center">
+                        {backup.name}
+                        {!isKept && (
+                          <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                            삭제 예정
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        생성일: {formatDate(backup.createdAt)} | 크기: {formatBytes(backup.size)}
+                      </div>
                     </div>
+                    <button
+                      onClick={() => {
+                        setSelectedBackup(backup);
+                        setShowRestoreModal(true);
+                      }}
+                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors"
+                    >
+                      복원
+                    </button>
                   </div>
-                </div>
-              </li>
-            ))
+                </li>
+              );
+            })
           )}
         </ul>
       </div>
@@ -218,15 +330,15 @@ export default function BackupManager() {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">백업 생성</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">데이터베이스 백업 생성</h3>
               
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  데이터베이스 선택
+                  백업할 데이터베이스 선택
                 </label>
                 <select
                   value={selectedDatabase}
-                  onChange={(e) => handleDatabaseChange(e.target.value)}
+                  onChange={(e) => setSelectedDatabase(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">데이터베이스를 선택하세요</option>
@@ -238,58 +350,79 @@ export default function BackupManager() {
                 </select>
               </div>
 
+              <div className="mb-4 p-3 bg-blue-50 rounded-md">
+                <p className="text-sm text-blue-700">
+                  <strong>참고:</strong> 선택한 데이터베이스의 모든 컬렉션이 백업됩니다.
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowBackupModal(false);
+                    setSelectedDatabase('');
+                  }}
+                  className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleBackup}
+                  disabled={backupLoading || !selectedDatabase}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  {backupLoading ? '백업 중...' : '백업 생성'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 복원 확인 모달 */}
+      {showRestoreModal && selectedBackup && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-[600px] shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">백업 복원</h3>
+              
+              <div className="mb-4">
+                <p className="text-sm text-gray-600">
+                  <strong>경고:</strong> 이 작업은 현재 데이터베이스의 모든 데이터를 삭제하고 
+                  백업 데이터로 교체합니다. 되돌릴 수 없습니다.
+                </p>
+                <p className="text-sm text-red-600 mt-2">
+                  <strong>주의:</strong> 백업 시점에 존재하지 않았던 컬렉션들은 복원 후 사라집니다.
+                  현재 데이터베이스의 모든 컬렉션이 백업 시점의 상태로 완전히 복원됩니다.
+                </p>
+              </div>
+
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  백업 유형
+                  복원할 백업
                 </label>
-                <div className="space-y-2">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="backupType"
-                      value="full"
-                      checked={backupType === 'full'}
-                      onChange={(e) => setBackupType(e.target.value as 'full' | 'partial')}
-                      className="mr-2"
-                    />
-                    전체 데이터베이스 백업
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="backupType"
-                      value="partial"
-                      checked={backupType === 'partial'}
-                      onChange={(e) => setBackupType(e.target.value as 'full' | 'partial')}
-                      className="mr-2"
-                    />
-                    특정 컬렉션만 백업
-                  </label>
+                <div className="p-3 bg-gray-50 rounded-md">
+                  <div className="text-sm font-medium text-gray-900">{selectedBackup.name}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    생성일: {formatDate(selectedBackup.createdAt)} | 크기: {formatBytes(selectedBackup.size)}
+                  </div>
                 </div>
               </div>
 
-              {/* 컬렉션 선택 영역 */}
-              {backupType === 'partial' && selectedDatabase && (
+              {/* 복원 로그 표시 영역 */}
+              {showRestoreLogs && (
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    백업할 컬렉션 선택 ({selectedCollections.length}개 선택됨)
+                    복원 진행 상황
                   </label>
-                  <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-md p-2">
-                    {collections.length === 0 ? (
-                      <div className="text-sm text-gray-500 text-center py-2">
-                        컬렉션을 불러오는 중...
-                      </div>
+                  <div className="p-3 bg-black text-green-400 rounded-md font-mono text-xs h-32 overflow-y-auto">
+                    {restoreLogs.length === 0 ? (
+                      <div className="text-gray-500">복원 작업을 시작하면 로그가 여기에 표시됩니다...</div>
                     ) : (
-                      collections.map((collection) => (
-                        <label key={collection.name} className="flex items-center py-1">
-                          <input
-                            type="checkbox"
-                            checked={selectedCollections.includes(collection.name)}
-                            onChange={() => handleCollectionToggle(collection.name)}
-                            className="mr-2"
-                          />
-                          <span className="text-sm">{collection.name}</span>
-                        </label>
+                      restoreLogs.map((log, index) => (
+                        <div key={index} className="mb-1">
+                          {log}
+                        </div>
                       ))
                     )}
                   </div>
@@ -299,26 +432,36 @@ export default function BackupManager() {
               <div className="flex justify-end space-x-3">
                 <button
                   onClick={() => {
-                    setShowBackupModal(false);
-                    setSelectedDatabase('');
-                    setSelectedCollections([]);
-                    setBackupType('full');
+                    setShowRestoreModal(false);
+                    setSelectedBackup(null);
+                    setShowRestoreLogs(false);
+                    setRestoreLogs([]);
                   }}
                   className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400 transition-colors"
                 >
                   취소
                 </button>
                 <button
-                  onClick={handleBackup}
-                  disabled={backupLoading || !selectedDatabase || (backupType === 'partial' && selectedCollections.length === 0)}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  onClick={handleRestore}
+                  disabled={restoreLoading}
+                  className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors disabled:opacity-50"
                 >
-                  {backupLoading ? '백업 중...' : '백업 생성'}
+                  {restoreLoading ? '복원 중...' : '복원 실행'}
                 </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Toast 컴포넌트 */}
+      {toast.isVisible && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          isVisible={toast.isVisible} 
+          onClose={hideToast} 
+        />
       )}
     </div>
   );

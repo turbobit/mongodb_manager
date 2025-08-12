@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Toast from './Toast';
 
 interface Snapshot {
   name: string;
@@ -14,8 +15,14 @@ interface Database {
   empty: boolean;
 }
 
+interface Collection {
+  name: string;
+  type: string;
+}
+
 export default function SnapshotManager() {
   const [databases, setDatabases] = useState<Database[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDatabase, setSelectedDatabase] = useState('');
@@ -24,10 +31,57 @@ export default function SnapshotManager() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRollbackModal, setShowRollbackModal] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<string>('');
+  
+  // Toast 상태
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+    isVisible: boolean;
+  }>({
+    message: '',
+    type: 'info',
+    isVisible: false,
+  });
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({
+      message,
+      type,
+      isVisible: true,
+    });
+  };
+
+  const hideToast = () => {
+    setToast(prev => ({ ...prev, isVisible: false }));
+  };
 
   useEffect(() => {
     fetchDatabases();
   }, []);
+
+  // ESC 키로 모달 닫기
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (showCreateModal) {
+          setShowCreateModal(false);
+          setSnapshotName('');
+        }
+        if (showRollbackModal) {
+          setShowRollbackModal(false);
+          setSelectedSnapshot('');
+        }
+      }
+    };
+
+    if (showCreateModal || showRollbackModal) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [showCreateModal, showRollbackModal]);
 
   const fetchDatabases = async () => {
     try {
@@ -40,6 +94,30 @@ export default function SnapshotManager() {
       console.error('데이터베이스 목록 조회 실패:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCollections = async (databaseName: string) => {
+    try {
+      const response = await fetch(`/api/collections?database=${databaseName}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCollections(data.collections);
+      }
+    } catch (error) {
+      console.error('컬렉션 목록 조회 실패:', error);
+      setCollections([]);
+    }
+  };
+
+  const handleDatabaseChange = (databaseName: string) => {
+    setSelectedDatabase(databaseName);
+    setSelectedCollection('');
+    setSnapshots([]);
+    if (databaseName) {
+      fetchCollections(databaseName);
+    } else {
+      setCollections([]);
     }
   };
 
@@ -59,7 +137,7 @@ export default function SnapshotManager() {
 
   const handleCreateSnapshot = async () => {
     if (!selectedDatabase || !selectedCollection || !snapshotName) {
-      alert('모든 필드를 입력해주세요.');
+      showToast('모든 필드를 입력해주세요.', 'error');
       return;
     }
 
@@ -81,18 +159,18 @@ export default function SnapshotManager() {
       }
 
       const data = await response.json();
-      alert(data.message);
+      showToast(data.message);
       setShowCreateModal(false);
       setSnapshotName('');
       fetchSnapshots();
     } catch (error) {
-      alert(error instanceof Error ? error.message : '스냅샷 생성 중 오류가 발생했습니다.');
+      showToast(error instanceof Error ? error.message : '스냅샷 생성 중 오류가 발생했습니다.', 'error');
     }
   };
 
   const handleRollback = async () => {
     if (!selectedDatabase || !selectedCollection || !selectedSnapshot) {
-      alert('모든 필드를 선택해주세요.');
+      showToast('모든 필드를 선택해주세요.', 'error');
       return;
     }
 
@@ -118,11 +196,11 @@ export default function SnapshotManager() {
       }
 
       const data = await response.json();
-      alert(data.message);
+      showToast(data.message);
       setShowRollbackModal(false);
       setSelectedSnapshot('');
     } catch (error) {
-      alert(error instanceof Error ? error.message : '롤백 중 오류가 발생했습니다.');
+      showToast(error instanceof Error ? error.message : '롤백 중 오류가 발생했습니다.', 'error');
     }
   };
 
@@ -164,11 +242,7 @@ export default function SnapshotManager() {
               </label>
               <select
                 value={selectedDatabase}
-                onChange={(e) => {
-                  setSelectedDatabase(e.target.value);
-                  setSelectedCollection('');
-                  setSnapshots([]);
-                }}
+                onChange={(e) => handleDatabaseChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">데이터베이스를 선택하세요</option>
@@ -184,13 +258,18 @@ export default function SnapshotManager() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 컬렉션
               </label>
-              <input
-                type="text"
+              <select
                 value={selectedCollection}
                 onChange={(e) => setSelectedCollection(e.target.value)}
-                placeholder="컬렉션명을 입력하세요"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              >
+                <option value="">컬렉션을 선택하세요</option>
+                {collections.map((col) => (
+                  <option key={col.name} value={col.name}>
+                    {col.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           
@@ -265,13 +344,18 @@ export default function SnapshotManager() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   컬렉션명
                 </label>
-                <input
-                  type="text"
+                <select
                   value={selectedCollection}
                   onChange={(e) => setSelectedCollection(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="컬렉션명을 입력하세요"
-                />
+                >
+                  <option value="">컬렉션을 선택하세요</option>
+                  {collections.map((col) => (
+                    <option key={col.name} value={col.name}>
+                      {col.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="mb-4">
@@ -357,6 +441,16 @@ export default function SnapshotManager() {
           </div>
         </div>
       )}
+
+             {/* Toast 컴포넌트 */}
+       {toast.isVisible && (
+         <Toast
+           message={toast.message}
+           type={toast.type}
+           isVisible={toast.isVisible}
+           onClose={hideToast}
+         />
+       )}
     </div>
   );
 } 
