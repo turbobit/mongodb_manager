@@ -20,10 +20,33 @@ interface DatabaseStatus {
     memory: {
       resident: number;
       virtual: number;
+      mapped: number;
+      mappedWithJournal: number;
+      totalSystemMemory: number;
     };
     connections: {
       current: number;
       available: number;
+      active: number;
+      inactive: number;
+    };
+    operations: {
+      insert: number;
+      query: number;
+      update: number;
+      delete: number;
+      getmore: number;
+      command: number;
+    };
+    network: {
+      bytesIn: number;
+      bytesOut: number;
+      numRequests: number;
+    };
+    opLatencies: {
+      reads: number;
+      writes: number;
+      commands: number;
     };
   };
 }
@@ -53,7 +76,7 @@ export default function DatabaseStatus() {
       } else {
         setError('데이터베이스 상태를 가져올 수 없습니다.');
       }
-    } catch (err) {
+    } catch {
       setError('데이터베이스 연결 오류');
     } finally {
       setLoading(false);
@@ -63,10 +86,12 @@ export default function DatabaseStatus() {
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
+
+
 
   const formatUptime = (seconds: number) => {
     const days = Math.floor(seconds / 86400);
@@ -256,7 +281,7 @@ export default function DatabaseStatus() {
           <h3 className="text-lg font-medium text-gray-900">서버 정보</h3>
         </div>
         <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div>
               <h4 className="text-sm font-medium text-gray-500">MongoDB 버전</h4>
               <p className="text-lg font-semibold text-gray-900">{status.serverInfo.version}</p>
@@ -266,10 +291,144 @@ export default function DatabaseStatus() {
               <p className="text-lg font-semibold text-gray-900">{formatUptime(status.serverInfo.uptime)}</p>
             </div>
             <div>
-              <h4 className="text-sm font-medium text-gray-500">메모리 사용량</h4>
+              <h4 className="text-sm font-medium text-gray-500">활성 연결</h4>
               <p className="text-lg font-semibold text-gray-900">
-                {formatBytes(status.serverInfo.memory.resident)} / {formatBytes(status.serverInfo.memory.virtual)}
+                {status.serverInfo.connections.active} / {status.serverInfo.connections.current}
               </p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-gray-500">네트워크 요청</h4>
+              <p className="text-lg font-semibold text-gray-900">
+                {status.serverInfo.network.numRequests.toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 메모리 사용량 상세 정보 */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">메모리 사용량</h3>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="relative group">
+              <h4 className="text-sm font-medium text-gray-500 flex items-center">
+                실제 메모리 (Resident)
+                <span className="ml-1 text-gray-400 cursor-help">?</span>
+              </h4>
+              <p className="text-lg font-semibold text-blue-600">
+                {formatBytes(status.serverInfo.memory.resident)} / {formatBytes(status.serverInfo.memory.totalSystemMemory)}
+              </p>
+              <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                  style={{ width: `${Math.min((status.serverInfo.memory.resident / status.serverInfo.memory.totalSystemMemory) * 100, 100)}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                사용률: {Math.round((status.serverInfo.memory.resident / status.serverInfo.memory.totalSystemMemory) * 100)}%
+              </p>
+              {/* 툴팁 */}
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                MongoDB 프로세스가 실제로 사용하는 물리적 메모리입니다. 데이터, 인덱스, 연결 등을 포함한 실제 RAM 사용량을 나타냅니다.
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+              </div>
+            </div>
+            <div className="relative group">
+              <h4 className="text-sm font-medium text-gray-500 flex items-center">
+                가상 메모리 (Virtual)
+                <span className="ml-1 text-gray-400 cursor-help">?</span>
+              </h4>
+              <p className="text-lg font-semibold text-green-600">{formatBytes(status.serverInfo.memory.virtual)}</p>
+              {/* 툴팁 */}
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                MongoDB 프로세스가 할당받은 총 가상 메모리입니다. 물리적 RAM과 스왑 메모리를 포함한 전체 메모리 공간을 나타냅니다.
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+              </div>
+            </div>
+            <div className="relative group">
+              <h4 className="text-sm font-medium text-gray-500 flex items-center">
+                매핑된 메모리 (Mapped)
+                <span className="ml-1 text-gray-400 cursor-help">?</span>
+              </h4>
+              <p className="text-lg font-semibold text-purple-600">{formatBytes(status.serverInfo.memory.mapped)}</p>
+              {/* 툴팁 */}
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                MongoDB가 메모리에 매핑한 데이터베이스 파일의 크기입니다. 데이터와 인덱스가 메모리에 로드된 양을 나타냅니다.
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+              </div>
+            </div>
+            <div className="relative group">
+              <h4 className="text-sm font-medium text-gray-500 flex items-center">
+                저널 포함 매핑
+                <span className="ml-1 text-gray-400 cursor-help">?</span>
+              </h4>
+              <p className="text-lg font-semibold text-orange-600">{formatBytes(status.serverInfo.memory.mappedWithJournal)}</p>
+              {/* 툴팁 */}
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                저널 파일을 포함한 총 매핑된 메모리입니다. 데이터 복구를 위한 저널 파일까지 포함한 전체 메모리 매핑 크기입니다.
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 작업 통계 */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">작업 통계</h3>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="text-center">
+              <h4 className="text-sm font-medium text-gray-500">조회</h4>
+              <p className="text-lg font-semibold text-blue-600">{status.serverInfo.operations.query.toLocaleString()}</p>
+            </div>
+            <div className="text-center">
+              <h4 className="text-sm font-medium text-gray-500">삽입</h4>
+              <p className="text-lg font-semibold text-green-600">{status.serverInfo.operations.insert.toLocaleString()}</p>
+            </div>
+            <div className="text-center">
+              <h4 className="text-sm font-medium text-gray-500">수정</h4>
+              <p className="text-lg font-semibold text-yellow-600">{status.serverInfo.operations.update.toLocaleString()}</p>
+            </div>
+            <div className="text-center">
+              <h4 className="text-sm font-medium text-gray-500">삭제</h4>
+              <p className="text-lg font-semibold text-red-600">{status.serverInfo.operations.delete.toLocaleString()}</p>
+            </div>
+            <div className="text-center">
+              <h4 className="text-sm font-medium text-gray-500">명령</h4>
+              <p className="text-lg font-semibold text-purple-600">{status.serverInfo.operations.command.toLocaleString()}</p>
+            </div>
+            <div className="text-center">
+              <h4 className="text-sm font-medium text-gray-500">GetMore</h4>
+              <p className="text-lg font-semibold text-indigo-600">{status.serverInfo.operations.getmore.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 네트워크 통계 */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">네트워크 통계</h3>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <h4 className="text-sm font-medium text-gray-500">수신 바이트</h4>
+              <p className="text-lg font-semibold text-green-600">{formatBytes(status.serverInfo.network.bytesIn)}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-gray-500">송신 바이트</h4>
+              <p className="text-lg font-semibold text-blue-600">{formatBytes(status.serverInfo.network.bytesOut)}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-gray-500">총 요청 수</h4>
+              <p className="text-lg font-semibold text-purple-600">{status.serverInfo.network.numRequests.toLocaleString()}</p>
             </div>
           </div>
         </div>

@@ -105,6 +105,38 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// 폴더 크기 계산 함수
+async function getDirectorySize(dirPath: string): Promise<number> {
+  try {
+    const stats = await fs.promises.stat(dirPath);
+    if (!stats.isDirectory()) {
+      return stats.size;
+    }
+
+    const files = await fs.promises.readdir(dirPath);
+    let totalSize = 0;
+
+    for (const file of files) {
+      const filePath = path.join(dirPath, file);
+      try {
+        const fileStats = await fs.promises.stat(filePath);
+        if (fileStats.isDirectory()) {
+          totalSize += await getDirectorySize(filePath);
+        } else {
+          totalSize += fileStats.size;
+        }
+      } catch (error) {
+        console.error(`파일 크기 계산 오류 (${filePath}):`, error);
+      }
+    }
+
+    return totalSize;
+  } catch (error) {
+    console.error(`디렉토리 크기 계산 오류 (${dirPath}):`, error);
+    return 0;
+  }
+}
+
 // 오래된 백업 정리 함수
 async function cleanupOldBackups(databaseName: string, backupDir: string) {
   try {
@@ -158,17 +190,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ backups: [], backupStats: {} });
     }
 
-    const backupFolders = fs.readdirSync(allBackupDir, { withFileTypes: true })
+    const backupFoldersData = fs.readdirSync(allBackupDir, { withFileTypes: true })
       .filter(dirent => dirent.isDirectory())
       .map(dirent => {
         const stats = fs.statSync(path.join(allBackupDir, dirent.name));
         return {
           name: dirent.name,
-          createdAt: stats.birthtime,
-          size: stats.size
+          path: path.join(allBackupDir, dirent.name),
+          createdAt: stats.birthtime
         };
       })
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    // 각 백업 폴더의 실제 크기 계산
+    const backupFolders = await Promise.all(
+      backupFoldersData.map(async (backup) => {
+        const size = await getDirectorySize(backup.path);
+        return {
+          name: backup.name,
+          createdAt: backup.createdAt,
+          size: size
+        };
+      })
+    );
 
     // 데이터베이스별로 백업 그룹화
     const backupStats: { [database: string]: { total: number; kept: number; deleted: number } } = {};

@@ -7,19 +7,38 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
-// MongoDB 인증 파라미터 가져오기
-function getMongoAuthParams(): string {
+// MongoDB 인증 정보를 가져오는 함수
+function getMongoAuthParams() {
   const uri = process.env.MONGODB_URI;
-  if (!uri) return '';
   
-  // URI에서 사용자명과 비밀번호 추출
-  const match = uri.match(/mongodb:\/\/([^:]+):([^@]+)@/);
-  if (match) {
-    const [, username, password] = match;
-    return `--username ${username} --password ${password}`;
+  // 환경 변수가 없으면 기본값 사용
+  if (!uri) {
+    return '--host localhost --port 27017';
   }
-  
-  return '';
+
+  try {
+    const url = new URL(uri);
+    const username = url.username;
+    const password = url.password;
+    const host = url.hostname;
+    const port = url.port || '27017';
+    
+    let authParams = `--host ${host} --port ${port}`;
+    
+    if (username && password) {
+      authParams += ` --username ${username} --password ${password}`;
+    }
+    
+    // 인증 데이터베이스가 있으면 추가
+    const authSource = url.searchParams.get('authSource') || 'admin';
+    authParams += ` --authenticationDatabase ${authSource}`;
+    
+    return authParams;
+  } catch (error) {
+    console.error('MongoDB URI 파싱 오류:', error);
+    // 파싱 오류 시 기본값 반환
+    return '--host localhost --port 27017';
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -82,7 +101,13 @@ export async function POST(request: NextRequest) {
     console.log(`[${restoreEndTime.toISOString()}] 스냅샷 복원 완료 (소요시간: ${restoreDuration}ms)`);
     
     // mongorestore는 진행 상황을 stderr로 출력하므로, 실제 오류인지 확인
-    if (restoreError && !restoreError.includes('done restoring') && !restoreError.includes('writing') && !restoreError.includes('connected to')) {
+    if (restoreError && 
+        !restoreError.includes('done restoring') && 
+        !restoreError.includes('finished restoring') &&
+        !restoreError.includes('writing') && 
+        !restoreError.includes('connected to') &&
+        !restoreError.includes('document(s) restored successfully') &&
+        !restoreError.includes('no indexes to restore')) {
       console.error('스냅샷 복원 오류:', restoreError);
       return NextResponse.json({ error: '스냅샷 복원 중 오류가 발생했습니다.' }, { status: 500 });
     }

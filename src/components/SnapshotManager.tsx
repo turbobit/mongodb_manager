@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Toast from './Toast';
+import StorageInfo from './StorageInfo';
 import { generateShortUUIDv7 } from '@/lib/uuid';
 
 interface Snapshot {
@@ -22,6 +23,9 @@ interface Database {
 interface Collection {
   name: string;
   type: string;
+  size: number;
+  storageSize: number;
+  count: number;
 }
 
 export default function SnapshotManager() {
@@ -31,10 +35,9 @@ export default function SnapshotManager() {
   const [loading, setLoading] = useState(true);
   const [selectedDatabase, setSelectedDatabase] = useState('');
   const [selectedCollection, setSelectedCollection] = useState('');
-  const [snapshotName, setSnapshotName] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRollbackModal, setShowRollbackModal] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<string>('');
+  const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
   
   // Toast 상태
   const [toast, setToast] = useState<{
@@ -67,10 +70,6 @@ export default function SnapshotManager() {
   useEffect(() => {
     const handleEscKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (showCreateModal) {
-          setShowCreateModal(false);
-          setSnapshotName(generateShortUUIDv7());
-        }
         if (showRollbackModal) {
           setShowRollbackModal(false);
           setSelectedSnapshot('');
@@ -78,14 +77,14 @@ export default function SnapshotManager() {
       }
     };
 
-    if (showCreateModal || showRollbackModal) {
+    if (showRollbackModal) {
       document.addEventListener('keydown', handleEscKey);
     }
 
     return () => {
       document.removeEventListener('keydown', handleEscKey);
     };
-  }, [showCreateModal, showRollbackModal]);
+  }, [showRollbackModal]);
 
   const fetchDatabases = async () => {
     try {
@@ -117,18 +116,23 @@ export default function SnapshotManager() {
   const handleDatabaseChange = (databaseName: string) => {
     setSelectedDatabase(databaseName);
     setSelectedCollection('');
-    setSnapshots([]);
     if (databaseName) {
       fetchCollections(databaseName);
+      fetchSnapshots(databaseName, ''); // 데이터베이스만 선택된 경우 해당 데이터베이스의 모든 스냅샷 가져오기
     } else {
       setCollections([]);
+      setSnapshots([]);
     }
   };
 
   const handleCollectionChange = (collectionName: string) => {
     setSelectedCollection(collectionName);
     if (collectionName && selectedDatabase) {
+      // 특정 컬렉션 선택 시
       fetchSnapshots(selectedDatabase, collectionName);
+    } else if (selectedDatabase) {
+      // "컬렉션을 선택하세요" 선택 시 - 데이터베이스의 모든 스냅샷 표시
+      fetchSnapshots(selectedDatabase, undefined);
     } else {
       setSnapshots([]);
     }
@@ -136,12 +140,20 @@ export default function SnapshotManager() {
 
   const fetchSnapshots = async (databaseName?: string, collectionName?: string) => {
     const dbName = databaseName || selectedDatabase;
-    const colName = collectionName || selectedCollection;
     
-    if (!dbName || !colName) return;
+    if (!dbName) return;
     
     try {
-      const response = await fetch(`/api/snapshot?database=${dbName}&collection=${colName}`);
+      let url: string;
+      if (collectionName) {
+        // 특정 컬렉션 선택 시
+        url = `/api/snapshot?database=${dbName}&collection=${collectionName}`;
+      } else {
+        // 데이터베이스만 선택 시 (collectionName이 undefined 또는 빈 문자열)
+        url = `/api/snapshot?database=${dbName}`;
+      }
+      
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setSnapshots(data.snapshots);
@@ -157,6 +169,8 @@ export default function SnapshotManager() {
       return;
     }
 
+    setIsCreatingSnapshot(true);
+
     try {
       const response = await fetch('/api/snapshot', {
         method: 'POST',
@@ -166,7 +180,7 @@ export default function SnapshotManager() {
         body: JSON.stringify({
           databaseName: selectedDatabase,
           collectionName: selectedCollection,
-          snapshotName: snapshotName,
+          snapshotName: generateShortUUIDv7(),
         }),
       });
 
@@ -175,18 +189,25 @@ export default function SnapshotManager() {
       }
 
       const data = await response.json();
-      showToast(data.message);
-      setShowCreateModal(false);
-      setSnapshotName(generateShortUUIDv7());
+      showToast(data.message, 'success');
       fetchSnapshots(selectedDatabase, selectedCollection);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '스냅샷 생성 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsCreatingSnapshot(false);
     }
   };
 
   const handleRollback = async () => {
-    if (!selectedDatabase || !selectedCollection || !selectedSnapshot) {
-      showToast('모든 필드를 선택해주세요.', 'error');
+    if (!selectedSnapshot) {
+      showToast('복원할 스냅샷을 선택해주세요.', 'error');
+      return;
+    }
+
+    // 선택된 스냅샷에서 데이터베이스와 컬렉션 정보 추출
+    const snapshot = snapshots.find(s => s.name === selectedSnapshot);
+    if (!snapshot) {
+      showToast('스냅샷 정보를 찾을 수 없습니다.', 'error');
       return;
     }
 
@@ -195,15 +216,15 @@ export default function SnapshotManager() {
     }
 
     try {
-      const response = await fetch('/api/snapshot/rollback', {
+      const response = await fetch('/api/snapshot/restore', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          databaseName: selectedDatabase,
-          collectionName: selectedCollection,
           snapshotName: selectedSnapshot,
+          databaseName: snapshot.databaseName,
+          collectionName: snapshot.collectionName,
         }),
       });
 
@@ -264,17 +285,11 @@ export default function SnapshotManager() {
 
   return (
     <div className="space-y-6">
+      {/* 스토리지 정보 */}
+      <StorageInfo type="snapshot" title="스냅샷" />
+      
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">스냅샷 관리</h2>
-        <button
-          onClick={() => {
-            setSnapshotName(generateShortUUIDv7());
-            setShowCreateModal(true);
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          새 스냅샷 생성
-        </button>
       </div>
 
       {/* 스냅샷 목록 */}
@@ -284,8 +299,8 @@ export default function SnapshotManager() {
         </div>
         
         <div className="p-6">
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
+          <div className="flex gap-4 mb-4">
+            <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 데이터베이스
               </label>
@@ -297,13 +312,13 @@ export default function SnapshotManager() {
                 <option value="">데이터베이스를 선택하세요</option>
                 {databases.map((db) => (
                   <option key={db.name} value={db.name}>
-                    {db.name}
+                    {db.name} ({formatBytes(db.sizeOnDisk)})
                   </option>
                 ))}
               </select>
             </div>
             
-            <div>
+            <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 컬렉션
               </label>
@@ -315,10 +330,28 @@ export default function SnapshotManager() {
                 <option value="">컬렉션을 선택하세요</option>
                 {collections.map((col) => (
                   <option key={col.name} value={col.name}>
-                    {col.name}
+                    {col.name} ({formatBytes(col.size)})
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                onClick={handleCreateSnapshot}
+                disabled={!selectedDatabase || !selectedCollection || isCreatingSnapshot}
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center whitespace-nowrap"
+                title={!selectedDatabase ? "데이터베이스를 선택해주세요" : !selectedCollection ? "컬렉션을 선택해주세요" : "스냅샷 생성"}
+              >
+                {isCreatingSnapshot ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    생성 중...
+                  </>
+                ) : (
+                  '스냅샷 생성'
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -332,12 +365,20 @@ export default function SnapshotManager() {
             snapshots.map((snapshot) => (
               <li key={snapshot.name} className="px-6 py-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">
-                      {snapshot.snapshotName}
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-shrink-0">
+                      <div className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-lg text-sm font-semibold">
+                        <span className="text-sm">{snapshot.databaseName}.</span>
+                        <span className="text-base font-bold">{snapshot.collectionName}</span>
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-500">
-                      {snapshot.databaseName}.{snapshot.collectionName} | 생성일: {formatDate(snapshot.createdAt)} | 크기: {formatBytes(snapshot.size)}
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {snapshot.snapshotName}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        생성일: {formatDate(snapshot.createdAt)} | 크기: {formatBytes(snapshot.size)}
+                      </div>
                     </div>
                   </div>
                   <div className="flex space-x-2">
@@ -364,88 +405,6 @@ export default function SnapshotManager() {
         </ul>
       </div>
 
-      {/* 스냅샷 생성 모달 */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">스냅샷 생성</h3>
-              
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  데이터베이스
-                </label>
-                <select
-                  value={selectedDatabase}
-                  onChange={(e) => setSelectedDatabase(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">데이터베이스를 선택하세요</option>
-                  {databases.map((db) => (
-                    <option key={db.name} value={db.name}>
-                      {db.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  컬렉션명
-                </label>
-                <select
-                  value={selectedCollection}
-                  onChange={(e) => setSelectedCollection(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">컬렉션을 선택하세요</option>
-                  {collections.map((col) => (
-                    <option key={col.name} value={col.name}>
-                      {col.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  스냅샷 이름
-                </label>
-                <input
-                  type="text"
-                  value={snapshotName}
-                  onChange={(e) => setSnapshotName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="UUID v7이 자동으로 생성됩니다"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  스냅샷 이름을 입력하지 않으면 UUID v7이 자동으로 생성됩니다. 필요시 수정하세요.
-                </p>
-              </div>
-
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setSnapshotName(generateShortUUIDv7());
-                  }}
-                  className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400 transition-colors"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={handleCreateSnapshot}
-                  disabled={!selectedDatabase || !selectedCollection}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                >
-                  생성
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 롤백 모달 */}
       {showRollbackModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -453,24 +412,24 @@ export default function SnapshotManager() {
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">스냅샷 복원</h3>
               
-                              <div className="mb-4">
-                  <p className="text-sm text-gray-600">
-                    <strong>경고:</strong> 이 작업은 현재 컬렉션의 모든 데이터를 삭제하고 
-                    스냅샷 데이터로 교체합니다. 되돌릴 수 없습니다.
-                  </p>
-                </div>
+              <div className="mb-4">
+                <p className="text-sm text-gray-600">
+                  <strong>경고:</strong> 이 작업은 현재 컬렉션의 모든 데이터를 삭제하고 
+                  스냅샷 데이터로 교체합니다. 되돌릴 수 없습니다.
+                </p>
+              </div>
 
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    복원할 스냅샷
-                  </label>
-                  <input
-                    type="text"
-                    value={selectedSnapshot}
-                    disabled
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                  />
-                </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  복원할 스냅샷
+                </label>
+                <input
+                  type="text"
+                  value={selectedSnapshot}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                />
+              </div>
 
               <div className="flex justify-end space-x-3">
                 <button
@@ -482,27 +441,27 @@ export default function SnapshotManager() {
                 >
                   취소
                 </button>
-                                  <button
-                    onClick={handleRollback}
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
-                  >
-                    복원 실행
-                  </button>
+                <button
+                  onClick={handleRollback}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+                >
+                  복원 실행
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-             {/* Toast 컴포넌트 */}
-       {toast.isVisible && (
-         <Toast
-           message={toast.message}
-           type={toast.type}
-           isVisible={toast.isVisible}
-           onClose={hideToast}
-         />
-       )}
+      {/* Toast 컴포넌트 */}
+      {toast.isVisible && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          isVisible={toast.isVisible}
+          onClose={hideToast}
+        />
+      )}
     </div>
   );
 } 

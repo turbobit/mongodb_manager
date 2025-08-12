@@ -79,7 +79,13 @@ export async function POST(request: NextRequest) {
     console.log('복원 명령어:', restoreCommand);
     
     const { stderr: restoreError } = await execAsync(restoreCommand);
-    if (restoreError && !restoreError.includes('done') && !restoreError.includes('restoring') && !restoreError.includes('connected to')) {
+    if (restoreError && 
+        !restoreError.includes('done') && 
+        !restoreError.includes('finished') &&
+        !restoreError.includes('restoring') && 
+        !restoreError.includes('connected to') &&
+        !restoreError.includes('document(s) restored successfully') &&
+        !restoreError.includes('no indexes to restore')) {
       console.error('복원 오류:', restoreError);
       return NextResponse.json({ error: '타겟 데이터베이스 복원 중 오류가 발생했습니다.' }, { status: 500 });
     }

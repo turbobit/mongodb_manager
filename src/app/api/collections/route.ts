@@ -4,11 +4,11 @@ import clientPromise from '@/lib/mongodb';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession();
+    // const session = await getServerSession();
     
-    if (!session) {
-      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
-    }
+    // if (!session) {
+    //   return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    // }
 
     const { searchParams } = new URL(request.url);
     const databaseName = searchParams.get('database');
@@ -23,10 +23,31 @@ export async function GET(request: NextRequest) {
     // 컬렉션 목록 가져오기
     const collections = await db.listCollections().toArray();
     
-    const collectionList = collections.map(col => ({
-      name: col.name,
-      type: col.type || 'collection'
-    }));
+    // 각 컬렉션의 크기 정보 가져오기
+    const collectionList = await Promise.all(
+      collections.map(async (col) => {
+        try {
+          const collection = db.collection(col.name);
+          const stats = await collection.stats();
+          return {
+            name: col.name,
+            type: col.type || 'collection',
+            size: stats.size || 0,
+            storageSize: stats.storageSize || 0,
+            count: stats.count || 0
+          };
+        } catch (error) {
+          console.error(`컬렉션 ${col.name} 통계 조회 오류:`, error);
+          return {
+            name: col.name,
+            type: col.type || 'collection',
+            size: 0,
+            storageSize: 0,
+            count: 0
+          };
+        }
+      })
+    );
 
     return NextResponse.json({ collections: collectionList });
   } catch (error) {

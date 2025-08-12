@@ -9,19 +9,70 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
-// MongoDB 인증 파라미터 가져오기
-function getMongoAuthParams(): string {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) return '';
-  
-  // URI에서 사용자명과 비밀번호 추출
-  const match = uri.match(/mongodb:\/\/([^:]+):([^@]+)@/);
-  if (match) {
-    const [, username, password] = match;
-    return `--username ${username} --password ${password}`;
+// 폴더 크기 계산 함수
+async function getDirectorySize(dirPath: string): Promise<number> {
+  try {
+    const stats = await fs.promises.stat(dirPath);
+    if (!stats.isDirectory()) {
+      return stats.size;
+    }
+
+    const files = await fs.promises.readdir(dirPath);
+    let totalSize = 0;
+
+    for (const file of files) {
+      const filePath = path.join(dirPath, file);
+      try {
+        const fileStats = await fs.promises.stat(filePath);
+        if (fileStats.isDirectory()) {
+          totalSize += await getDirectorySize(filePath);
+        } else {
+          totalSize += fileStats.size;
+        }
+      } catch (error) {
+        console.error(`파일 크기 계산 오류 (${filePath}):`, error);
+      }
+    }
+
+    return totalSize;
+  } catch (error) {
+    console.error(`디렉토리 크기 계산 오류 (${dirPath}):`, error);
+    return 0;
   }
+}
+
+// MongoDB 인증 정보를 가져오는 함수
+function getMongoAuthParams() {
+  const uri = process.env.MONGODB_URI;
   
-  return '';
+  // 환경 변수가 없으면 기본값 사용
+  if (!uri) {
+    return '--host localhost --port 27017';
+  }
+
+  try {
+    const url = new URL(uri);
+    const username = url.username;
+    const password = url.password;
+    const host = url.hostname;
+    const port = url.port || '27017';
+    
+    let authParams = `--host ${host} --port ${port}`;
+    
+    if (username && password) {
+      authParams += ` --username ${username} --password ${password}`;
+    }
+    
+    // 인증 데이터베이스가 있으면 추가
+    const authSource = url.searchParams.get('authSource') || 'admin';
+    authParams += ` --authenticationDatabase ${authSource}`;
+    
+    return authParams;
+  } catch (error) {
+    console.error('MongoDB URI 파싱 오류:', error);
+    // 파싱 오류 시 기본값 반환
+    return '--host localhost --port 27017';
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -110,24 +161,44 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ snapshots: [] });
     }
 
-    const snapshotFolders = fs.readdirSync(snapshotDir, { withFileTypes: true })
+    const snapshotFoldersData = fs.readdirSync(snapshotDir, { withFileTypes: true })
       .filter(dirent => dirent.isDirectory())
       .map(dirent => {
         const stats = fs.statSync(path.join(snapshotDir, dirent.name));
         return {
           name: dirent.name,
-          createdAt: stats.birthtime,
-          size: stats.size
+          path: path.join(snapshotDir, dirent.name),
+          createdAt: stats.birthtime
         };
       })
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
-    // 필터링: 특정 데이터베이스와 컬렉션의 스냅샷만 반환
+    // 각 스냅샷 폴더의 실제 크기 계산
+    const snapshotFolders = await Promise.all(
+      snapshotFoldersData.map(async (snapshot) => {
+        const size = await getDirectorySize(snapshot.path);
+        return {
+          name: snapshot.name,
+          createdAt: snapshot.createdAt,
+          size: size
+        };
+      })
+    );
+
+    // 필터링: 데이터베이스만 선택된 경우 해당 데이터베이스의 모든 스냅샷, 컬렉션까지 선택된 경우 해당 컬렉션의 스냅샷만 반환
     let filteredSnapshots = snapshotFolders;
-    if (databaseName && collectionName) {
-      filteredSnapshots = snapshotFolders.filter(snapshot => 
-        snapshot.name.startsWith(`${databaseName}_${collectionName}_`)
-      );
+    if (databaseName) {
+      if (collectionName) {
+        // 데이터베이스와 컬렉션 모두 선택된 경우
+        filteredSnapshots = snapshotFolders.filter(snapshot => 
+          snapshot.name.startsWith(`${databaseName}_${collectionName}_`)
+        );
+      } else {
+        // 데이터베이스만 선택된 경우
+        filteredSnapshots = snapshotFolders.filter(snapshot => 
+          snapshot.name.startsWith(`${databaseName}_`)
+        );
+      }
     }
 
     // 스냅샷 정보 파싱

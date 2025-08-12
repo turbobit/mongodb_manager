@@ -103,7 +103,13 @@ export async function POST(request: NextRequest) {
     const restoreProcessDuration = restoreProcessEndTime.getTime() - restoreProcessStartTime.getTime();
     console.log(`[${restoreProcessEndTime.toISOString()}] 백업 복원 프로세스 완료 (소요시간: ${restoreProcessDuration}ms)`);
     
-    if (restoreError && !restoreError.includes('done') && !restoreError.includes('restoring') && !restoreError.includes('connected to')) {
+    if (restoreError && 
+        !restoreError.includes('done') && 
+        !restoreError.includes('finished') &&
+        !restoreError.includes('restoring') && 
+        !restoreError.includes('connected to') &&
+        !restoreError.includes('document(s) restored successfully') &&
+        !restoreError.includes('no indexes to restore')) {
       console.error('복원 오류:', restoreError);
       return NextResponse.json({ error: '백업 복원 중 오류가 발생했습니다.' }, { status: 500 });
     }

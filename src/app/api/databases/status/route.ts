@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import clientPromise from '@/lib/mongodb';
+import * as os from 'os';
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,11 +33,34 @@ export async function GET(request: NextRequest) {
       uptime: 0,
       memory: {
         resident: 0,
-        virtual: 0
+        virtual: 0,
+        mapped: 0,
+        mappedWithJournal: 0,
+        totalSystemMemory: 0
       },
       connections: {
         current: 0,
-        available: 0
+        available: 0,
+        active: 0,
+        inactive: 0
+      },
+      operations: {
+        insert: 0,
+        query: 0,
+        update: 0,
+        delete: 0,
+        getmore: 0,
+        command: 0
+      },
+      network: {
+        bytesIn: 0,
+        bytesOut: 0,
+        numRequests: 0
+      },
+      opLatencies: {
+        reads: 0,
+        writes: 0,
+        commands: 0
       }
     };
     
@@ -49,12 +73,35 @@ export async function GET(request: NextRequest) {
         version: serverStatusResult.version || 'Unknown',
         uptime: serverStatusResult.uptime || 0,
         memory: {
-          resident: serverStatusResult.mem?.resident || 0,
-          virtual: serverStatusResult.mem?.virtual || 0
+          resident: (serverStatusResult.mem?.resident || 0) * 1024 * 1024, // MB to bytes
+          virtual: (serverStatusResult.mem?.virtual || 0) * 1024 * 1024, // MB to bytes
+          mapped: (serverStatusResult.mem?.mapped || 0) * 1024 * 1024, // MB to bytes
+          mappedWithJournal: (serverStatusResult.mem?.mappedWithJournal || 0) * 1024 * 1024, // MB to bytes
+          totalSystemMemory: os.totalmem() // 시스템 전체 메모리
         },
         connections: {
           current: serverStatusResult.connections?.current || 0,
-          available: serverStatusResult.connections?.available || 0
+          available: serverStatusResult.connections?.available || 0,
+          active: serverStatusResult.connections?.active || 0,
+          inactive: serverStatusResult.connections?.inactive || 0
+        },
+        operations: {
+          insert: serverStatusResult.opcounters?.insert || 0,
+          query: serverStatusResult.opcounters?.query || 0,
+          update: serverStatusResult.opcounters?.update || 0,
+          delete: serverStatusResult.opcounters?.delete || 0,
+          getmore: serverStatusResult.opcounters?.getmore || 0,
+          command: serverStatusResult.opcounters?.command || 0
+        },
+        network: {
+          bytesIn: serverStatusResult.network?.bytesIn || 0,
+          bytesOut: serverStatusResult.network?.bytesOut || 0,
+          numRequests: serverStatusResult.network?.numRequests || 0
+        },
+        opLatencies: {
+          reads: serverStatusResult.opLatencies?.reads?.latency || 0,
+          writes: serverStatusResult.opLatencies?.writes?.latency || 0,
+          commands: serverStatusResult.opLatencies?.commands?.latency || 0
         }
       };
     } catch (error) {
@@ -110,8 +157,37 @@ export async function GET(request: NextRequest) {
       serverInfo: {
         version: 'Unknown',
         uptime: 0,
-        memory: { resident: 0, virtual: 0 },
-        connections: { current: 0, available: 0 }
+        memory: { 
+          resident: 0, 
+          virtual: 0, 
+          mapped: 0, 
+          mappedWithJournal: 0,
+          totalSystemMemory: os.totalmem()
+        },
+        connections: { 
+          current: 0, 
+          available: 0, 
+          active: 0, 
+          inactive: 0 
+        },
+        operations: {
+          insert: 0,
+          query: 0,
+          update: 0,
+          delete: 0,
+          getmore: 0,
+          command: 0
+        },
+        network: {
+          bytesIn: 0,
+          bytesOut: 0,
+          numRequests: 0
+        },
+        opLatencies: {
+          reads: 0,
+          writes: 0,
+          commands: 0
+        }
       }
     }, { status: 500 });
   }

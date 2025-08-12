@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Toast from './Toast';
+import StorageInfo from './StorageInfo';
 
 interface Backup {
   name: string;
@@ -258,6 +259,9 @@ export default function BackupManager() {
 
   return (
     <div className="space-y-6">
+      {/* 스토리지 정보 */}
+      <StorageInfo type="backup" title="백업" />
+      
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">백업 관리</h2>
         <button
