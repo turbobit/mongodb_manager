@@ -4,11 +4,11 @@ import clientPromise from '@/lib/mongodb';
 
 export async function GET(request: NextRequest) {
   try {
-    // const session = await getServerSession();
+    const session = await getServerSession();
     
-    // if (!session) {
-    //   return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
-    // }
+    if (!session) {
+      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    }
 
     const { searchParams } = new URL(request.url);
     const databaseName = searchParams.get('database');

@@ -2,5 +2,22 @@
 alwaysApply: true
 ---
 
-- window.alert은 쓰지 않고 toast 사용
+- window.alert은 쓰지 않고 toast 사용 ( @/components/Toast 사용 )
 - 모달창을 구현했을때는 ESC누르면 모달이 닫히게 구현네
+- 몽고 디비 인증정보는 getMongoAuthParams() 함수를 이용해 구현하고 있다.
+
+
+# api 엔드포인트 인증조건
+- 크론 백업 API (로컬 전용) /api/cron/backup - 로컬에서만 접근 가능, 인증 불필요
+
+## 인증이 필요한 API들
+✅ /api/backup - 전체 백업
+✅ /api/backup/restore - 백업 복원
+✅ /api/snapshot - 스냅샷 생성
+✅ /api/snapshot/restore - 스냅샷 복원
+✅ /api/databases - 데이터베이스 목록
+✅ /api/collections - 컬렉션 목록
+✅ /api/dummy-data - 더미 데이터 생성
+✅ /api/storage/backup - 백업 스토리지 정보
+✅ /api/storage/snapshot - 스냅샷 스토리지 정보
+✅ /api/history - API 히스토리

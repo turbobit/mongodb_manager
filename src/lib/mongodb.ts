@@ -1,10 +1,13 @@
 import { MongoClient } from 'mongodb';
 
-// 환경 변수가 없으면 기본값 사용
-const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/mongodb_manager';
+if (!process.env.MONGODB_URI) {
+  throw new Error('MONGODB_URI 환경 변수가 설정되지 않았습니다.');
+}
+
+const uri = process.env.MONGODB_URI;
 const options = {};
 
-let client: MongoClient;
+let client;
 let clientPromise: Promise<MongoClient>;
 
 if (process.env.NODE_ENV === 'development') {
@@ -17,7 +20,7 @@ if (process.env.NODE_ENV === 'development') {
     client = new MongoClient(uri, options);
     globalWithMongo._mongoClientPromise = client.connect();
   }
-  clientPromise = globalWithMongo._mongoClientPromise!;
+  clientPromise = globalWithMongo._mongoClientPromise;
 } else {
   // 프로덕션 환경에서는 새로운 연결
   client = new MongoClient(uri, options);

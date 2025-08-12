@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
@@ -64,6 +65,11 @@ async function getDiskUsage(): Promise<{ total: number; available: number }> {
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession();
+    
+    if (!session) {
+      return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    }
     // 스냅샷 폴더가 존재하는지 확인
     try {
       await fs.access(SNAPSHOT_DIR);

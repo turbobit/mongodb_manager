@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
+import { saveApiHistory } from '@/lib/api-history';
 
 const execAsync = promisify(exec);
 
@@ -42,6 +43,8 @@ function getMongoAuthParams() {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     const session = await getServerSession();
     
@@ -73,6 +76,8 @@ export async function POST(request: NextRequest) {
     // MongoDB 인증 파라미터 가져오기
     const authParams = getMongoAuthParams();
     
+
+    
     // 전체 데이터베이스 백업
     const command = `mongodump ${authParams} --db ${databaseName} --out ${backupPath}`;
 
@@ -83,7 +88,33 @@ export async function POST(request: NextRequest) {
     // mongodump는 진행 상황을 stderr로 출력하므로, 실제 오류인지 확인
     if (stderr && !stderr.includes('done dumping') && !stderr.includes('writing') && !stderr.includes('connected to')) {
       console.error('백업 오류:', stderr);
-      return NextResponse.json({ error: '백업 중 오류가 발생했습니다.' }, { status: 500 });
+      
+      // 존재하지 않는 데이터베이스 오류인지 확인
+      const isDatabaseNotFound = stderr.includes('doesn\'t exist') || 
+                               stderr.includes('not found') || 
+                               stderr.includes('No database') ||
+                               stderr.includes('Failed to connect');
+      
+      const errorMessage = isDatabaseNotFound 
+        ? `데이터베이스 '${databaseName}'이(가) 존재하지 않습니다.`
+        : '백업 중 오류가 발생했습니다.';
+      
+      // API 히스토리 저장 (실패)
+      await saveApiHistory({
+        endpoint: '/api/backup',
+        method: 'POST',
+        database: databaseName,
+        action: '전체 백업',
+        actionType: 'backup',
+        target: `${databaseName} 데이터베이스`,
+        status: 'error',
+        message: errorMessage,
+        userEmail: session.user?.email || undefined,
+        duration: Date.now() - startTime,
+        details: { error: stderr, isDatabaseNotFound }
+      });
+      
+      return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 
     // 정상적인 출력 메시지도 로그에 기록
@@ -93,6 +124,21 @@ export async function POST(request: NextRequest) {
 
     // 백업 완료 후 오래된 백업 정리 (각 데이터베이스별 최대 7개 유지)
     await cleanupOldBackups(databaseName, allBackupDir);
+
+    // API 히스토리 저장 (성공)
+    await saveApiHistory({
+      endpoint: '/api/backup',
+      method: 'POST',
+      database: databaseName,
+      action: '전체 백업',
+      actionType: 'backup',
+      target: `${databaseName} 데이터베이스`,
+      status: 'success',
+      message: '백업이 완료되었습니다.',
+      userEmail: session.user?.email || undefined,
+      duration: Date.now() - startTime,
+      details: { backupPath }
+    });
 
     return NextResponse.json({ 
       success: true, 

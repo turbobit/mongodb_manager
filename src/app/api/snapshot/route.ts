@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { saveApiHistory } from '@/lib/api-history';
 
 const execAsync = promisify(exec);
 
@@ -76,6 +77,8 @@ function getMongoAuthParams() {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     const session = await getServerSession();
     
@@ -118,6 +121,23 @@ export async function POST(request: NextRequest) {
     // mongodump는 진행 상황을 stderr로 출력하므로, 실제 오류인지 확인
     if (stderr && !stderr.includes('done dumping') && !stderr.includes('writing') && !stderr.includes('connected to')) {
       console.error('스냅샷 생성 오류:', stderr);
+      
+      // API 히스토리 저장 (실패)
+      await saveApiHistory({
+        endpoint: '/api/snapshot',
+        method: 'POST',
+        database: databaseName,
+        collection: collectionName,
+        action: '스냅샷 생성',
+        actionType: 'snapshot',
+        target: `${databaseName}.${collectionName} 컬렉션`,
+        status: 'error',
+        message: '스냅샷 생성 중 오류가 발생했습니다.',
+        userEmail: session.user?.email || undefined,
+        duration: Date.now() - startTime,
+        details: { error: stderr, snapshotName: finalSnapshotName }
+      });
+      
       return NextResponse.json({ error: '스냅샷 생성 중 오류가 발생했습니다.' }, { status: 500 });
     }
 
@@ -128,6 +148,22 @@ export async function POST(request: NextRequest) {
 
     // 스냅샷 완료 후 오래된 스냅샷 정리 (각 컬렉션별 최대 10개 유지)
     await cleanupOldSnapshots(databaseName, collectionName, snapshotDir);
+
+    // API 히스토리 저장 (성공)
+    await saveApiHistory({
+      endpoint: '/api/snapshot',
+      method: 'POST',
+      database: databaseName,
+      collection: collectionName,
+      action: '스냅샷 생성',
+      actionType: 'snapshot',
+      target: `${databaseName}.${collectionName} 컬렉션`,
+      status: 'success',
+      message: `컬렉션 ${collectionName}의 스냅샷 '${finalSnapshotName}'이 생성되었습니다.`,
+      userEmail: session.user?.email || undefined,
+      duration: Date.now() - startTime,
+      details: { snapshotPath, snapshotName: finalSnapshotName }
+    });
 
     return NextResponse.json({ 
       success: true, 
@@ -171,7 +207,7 @@ export async function GET(request: NextRequest) {
           createdAt: stats.birthtime
         };
       })
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
     // 각 스냅샷 폴더의 실제 크기 계산
     const snapshotFolders = await Promise.all(

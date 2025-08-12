@@ -4,9 +4,11 @@ import { usePathname, useRouter } from 'next/navigation';
 
 const tabs = [
   { id: 'dashboard', name: '대시보드', icon: '📊', path: '/dashboard' },
-  { id: 'backup', name: '백업 관리', icon: '💾', path: '/dashboard/backup' },
-  { id: 'snapshot', name: '스냅샷', icon: '📸', path: '/dashboard/snapshot' },
+  { id: 'backup', name: '백업 관리(디비 통백업)', icon: '💾', path: '/dashboard/backup' },
+  { id: 'snapshot', name: '스냅샷(컬렉션별 백업)', icon: '📸', path: '/dashboard/snapshot' },
   { id: 'dummy', name: '더미 데이터', icon: '🎲', path: '/dashboard/dummy' },
+  { id: 'api', name: 'API 엔드포인트', icon: '🔗', path: '/dashboard/api' },
+  { id: 'history', name: 'API 히스토리', icon: '📋', path: '/dashboard/history' },
 ];
 
 export default function Navigation() {
@@ -26,6 +28,12 @@ export default function Navigation() {
     }
     if (pathname === '/dashboard/dummy') {
       return 'dummy';
+    }
+    if (pathname === '/dashboard/api') {
+      return 'api';
+    }
+    if (pathname === '/dashboard/history') {
+      return 'history';
     }
     
     return 'dashboard';

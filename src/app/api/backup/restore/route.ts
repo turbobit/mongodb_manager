@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
+import { saveApiHistory } from '@/lib/api-history';
 
 const execAsync = promisify(exec);
 
@@ -42,6 +43,8 @@ function getMongoAuthParams() {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     const session = await getServerSession();
     
@@ -90,6 +93,22 @@ export async function POST(request: NextRequest) {
     
     if (dropError && !dropError.includes('ok') && !dropError.includes('connected to')) {
       console.error('데이터베이스 삭제 오류:', dropError);
+      
+      // API 히스토리 저장 (실패)
+      await saveApiHistory({
+        endpoint: '/api/backup/restore',
+        method: 'POST',
+        database: databaseName,
+        action: '전체 백업 복원',
+        actionType: 'restore',
+        target: `${databaseName} 데이터베이스 (${backupName} 백업에서)`,
+        status: 'error',
+        message: '기존 데이터베이스 삭제 중 오류가 발생했습니다.',
+        userEmail: session.user?.email || undefined,
+        duration: Date.now() - startTime,
+        details: { error: dropError, backupName }
+      });
+      
       return NextResponse.json({ error: '기존 데이터베이스 삭제 중 오류가 발생했습니다.' }, { status: 500 });
     }
 
@@ -111,6 +130,22 @@ export async function POST(request: NextRequest) {
         !restoreError.includes('document(s) restored successfully') &&
         !restoreError.includes('no indexes to restore')) {
       console.error('복원 오류:', restoreError);
+      
+      // API 히스토리 저장 (실패)
+      await saveApiHistory({
+        endpoint: '/api/backup/restore',
+        method: 'POST',
+        database: databaseName,
+        action: '전체 백업 복원',
+        actionType: 'restore',
+        target: `${databaseName} 데이터베이스 (${backupName} 백업에서)`,
+        status: 'error',
+        message: '백업 복원 중 오류가 발생했습니다.',
+        userEmail: session.user?.email || undefined,
+        duration: Date.now() - startTime,
+        details: { error: restoreError, backupName }
+      });
+      
       return NextResponse.json({ error: '백업 복원 중 오류가 발생했습니다.' }, { status: 500 });
     }
 
@@ -124,6 +159,26 @@ export async function POST(request: NextRequest) {
     const totalRestoreDuration = restoreEndTime.getTime() - restoreStartTime.getTime();
     console.log(`[${restoreEndTime.toISOString()}] 복원 작업 완료: ${databaseName} 데이터베이스 (총 소요시간: ${totalRestoreDuration}ms)`);
     console.log(`복원 통계: 삭제시간=${dropDuration}ms, 복원시간=${restoreProcessDuration}ms, 총시간=${totalRestoreDuration}ms`);
+
+    // API 히스토리 저장 (성공)
+    await saveApiHistory({
+      endpoint: '/api/backup/restore',
+      method: 'POST',
+      database: databaseName,
+      action: '전체 백업 복원',
+      actionType: 'restore',
+      target: `${databaseName} 데이터베이스 (${backupName} 백업에서)`,
+      status: 'success',
+      message: `데이터베이스 ${databaseName}이(가) 백업 '${backupName}'에서 복원되었습니다.`,
+      userEmail: session.user?.email || undefined,
+      duration: Date.now() - startTime,
+      details: { 
+        backupName, 
+        dropDuration, 
+        restoreProcessDuration, 
+        totalRestoreDuration 
+      }
+    });
 
     return NextResponse.json({ 
       success: true, 

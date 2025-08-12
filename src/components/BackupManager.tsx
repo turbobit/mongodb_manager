@@ -263,7 +263,7 @@ export default function BackupManager() {
       <StorageInfo type="backup" title="백업" />
       
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">백업 관리</h2>
+        <h2 className="text-2xl font-bold text-gray-900">백업 관리(디비 통백업)</h2>
         <button
           onClick={() => setShowBackupModal(true)}
           className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"

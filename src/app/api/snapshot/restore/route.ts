@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { saveApiHistory } from '@/lib/api-history';
 
 const execAsync = promisify(exec);
 
@@ -42,6 +43,8 @@ function getMongoAuthParams() {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     const session = await getServerSession();
     
@@ -109,6 +112,23 @@ export async function POST(request: NextRequest) {
         !restoreError.includes('document(s) restored successfully') &&
         !restoreError.includes('no indexes to restore')) {
       console.error('스냅샷 복원 오류:', restoreError);
+      
+      // API 히스토리 저장 (실패)
+      await saveApiHistory({
+        endpoint: '/api/snapshot/restore',
+        method: 'POST',
+        database: databaseName,
+        collection: collectionName,
+        action: '스냅샷 복원',
+        actionType: 'restore',
+        target: `${databaseName}.${collectionName} 컬렉션 (${snapshotName} 스냅샷에서)`,
+        status: 'error',
+        message: '스냅샷 복원 중 오류가 발생했습니다.',
+        userEmail: session.user?.email || undefined,
+        duration: Date.now() - startTime,
+        details: { error: restoreError, snapshotName }
+      });
+      
       return NextResponse.json({ error: '스냅샷 복원 중 오류가 발생했습니다.' }, { status: 500 });
     }
 
@@ -119,6 +139,27 @@ export async function POST(request: NextRequest) {
 
     const totalDuration = restoreEndTime.getTime() - totalStartTime.getTime();
     console.log(`[${restoreEndTime.toISOString()}] 스냅샷 복원 작업 완료 (총 소요시간: ${totalDuration}ms)`);
+
+    // API 히스토리 저장 (성공)
+    await saveApiHistory({
+      endpoint: '/api/snapshot/restore',
+      method: 'POST',
+      database: databaseName,
+      collection: collectionName,
+      action: '스냅샷 복원',
+      actionType: 'restore',
+      target: `${databaseName}.${collectionName} 컬렉션 (${snapshotName} 스냅샷에서)`,
+      status: 'success',
+      message: `컬렉션 ${collectionName}이(가) 스냅샷 '${snapshotName}'으로 복원되었습니다.`,
+      userEmail: session.user?.email || undefined,
+      duration: Date.now() - startTime,
+      details: { 
+        snapshotName, 
+        dropDuration, 
+        restoreDuration, 
+        totalDuration 
+      }
+    });
 
     return NextResponse.json({ 
       success: true, 
