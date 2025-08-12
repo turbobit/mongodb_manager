@@ -295,7 +295,10 @@ export default function SnapshotManager() {
       {/* 스냅샷 목록 */}
       <div className="bg-white shadow overflow-hidden sm:rounded-md">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">스냅샷 목록</h3>
+          <h3 className="text-lg font-medium text-gray-900">스냅샷 히스토리</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            각 컬렉션별로 최대 10개의 스냅샷을 유지합니다. 새로운 스냅샷 생성 시 오래된 스냅샷은 자동으로 삭제됩니다.
+          </p>
         </div>
         
         <div className="p-6">
