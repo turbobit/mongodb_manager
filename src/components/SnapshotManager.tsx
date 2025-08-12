@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Toast from './Toast';
+import { generateShortUUIDv7 } from '@/lib/uuid';
 
 interface Snapshot {
   name: string;
@@ -65,7 +66,7 @@ export default function SnapshotManager() {
       if (event.key === 'Escape') {
         if (showCreateModal) {
           setShowCreateModal(false);
-          setSnapshotName('');
+          setSnapshotName(generateShortUUIDv7());
         }
         if (showRollbackModal) {
           setShowRollbackModal(false);
@@ -136,8 +137,8 @@ export default function SnapshotManager() {
   };
 
   const handleCreateSnapshot = async () => {
-    if (!selectedDatabase || !selectedCollection || !snapshotName) {
-      showToast('모든 필드를 입력해주세요.', 'error');
+    if (!selectedDatabase || !selectedCollection) {
+      showToast('데이터베이스와 컬렉션을 선택해주세요.', 'error');
       return;
     }
 
@@ -161,7 +162,7 @@ export default function SnapshotManager() {
       const data = await response.json();
       showToast(data.message);
       setShowCreateModal(false);
-      setSnapshotName('');
+      setSnapshotName(generateShortUUIDv7());
       fetchSnapshots();
     } catch (error) {
       showToast(error instanceof Error ? error.message : '스냅샷 생성 중 오류가 발생했습니다.', 'error');
@@ -221,7 +222,10 @@ export default function SnapshotManager() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">스냅샷 관리</h2>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            setSnapshotName(generateShortUUIDv7());
+            setShowCreateModal(true);
+          }}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
         >
           새 스냅샷 생성
@@ -367,15 +371,18 @@ export default function SnapshotManager() {
                   value={snapshotName}
                   onChange={(e) => setSnapshotName(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="스냅샷 이름을 입력하세요"
+                  placeholder="UUID v7이 자동으로 생성됩니다"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  스냅샷 이름을 입력하지 않으면 UUID v7이 자동으로 생성됩니다. 필요시 수정하세요.
+                </p>
               </div>
 
               <div className="flex justify-end space-x-3">
                 <button
                   onClick={() => {
                     setShowCreateModal(false);
-                    setSnapshotName('');
+                    setSnapshotName(generateShortUUIDv7());
                   }}
                   className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400 transition-colors"
                 >
@@ -383,7 +390,7 @@ export default function SnapshotManager() {
                 </button>
                 <button
                   onClick={handleCreateSnapshot}
-                  disabled={!selectedDatabase || !selectedCollection || !snapshotName}
+                  disabled={!selectedDatabase || !selectedCollection}
                   className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
                 >
                   생성

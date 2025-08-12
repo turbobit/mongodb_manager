@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import clientPromise from '@/lib/mongodb';
+import { generateShortUUIDv7 } from '@/lib/uuid';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,9 +13,12 @@ export async function POST(request: NextRequest) {
 
     const { databaseName, collectionName, snapshotName } = await request.json();
     
-    if (!databaseName || !collectionName || !snapshotName) {
-      return NextResponse.json({ error: '데이터베이스명, 컬렉션명, 스냅샷명이 필요합니다.' }, { status: 400 });
+    if (!databaseName || !collectionName) {
+      return NextResponse.json({ error: '데이터베이스명과 컬렉션명이 필요합니다.' }, { status: 400 });
     }
+
+    // 스냅샷 이름이 비어있으면 UUID v7 생성
+    const finalSnapshotName = snapshotName?.trim() || generateShortUUIDv7();
 
     const client = await clientPromise;
     const db = client.db(databaseName);
@@ -28,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 스냅샷 컬렉션 생성 (스냅샷명을 포함한 컬렉션명)
-    const snapshotCollectionName = `${collectionName}_snapshot_${snapshotName}`;
+    const snapshotCollectionName = `${collectionName}_snapshot_${finalSnapshotName}`;
     const snapshotCollection = db.collection(snapshotCollectionName);
     
     // 기존 스냅샷이 있다면 삭제
@@ -41,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ 
       success: true, 
-      message: `컬렉션 ${collectionName}의 스냅샷 '${snapshotName}'이 생성되었습니다.`,
+      message: `컬렉션 ${collectionName}의 스냅샷 '${finalSnapshotName}'이 생성되었습니다.`,
       snapshotCollection: snapshotCollectionName,
       documentCount: documents.length
     });
@@ -77,7 +81,7 @@ export async function GET(request: NextRequest) {
       .map(col => ({
         name: col.name,
         snapshotName: col.name.replace(`${collectionName}_snapshot_`, ''),
-        createdAt: col.options?.createdAt || new Date()
+        createdAt: new Date()
       }));
 
     return NextResponse.json({ snapshots: snapshotCollections });
