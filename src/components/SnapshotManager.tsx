@@ -122,11 +122,23 @@ export default function SnapshotManager() {
     }
   };
 
-  const fetchSnapshots = async () => {
-    if (!selectedDatabase || !selectedCollection) return;
+  const handleCollectionChange = (collectionName: string) => {
+    setSelectedCollection(collectionName);
+    if (collectionName && selectedDatabase) {
+      fetchSnapshots(selectedDatabase, collectionName);
+    } else {
+      setSnapshots([]);
+    }
+  };
+
+  const fetchSnapshots = async (databaseName?: string, collectionName?: string) => {
+    const dbName = databaseName || selectedDatabase;
+    const colName = collectionName || selectedCollection;
+    
+    if (!dbName || !colName) return;
     
     try {
-      const response = await fetch(`/api/snapshot?database=${selectedDatabase}&collection=${selectedCollection}`);
+      const response = await fetch(`/api/snapshot?database=${dbName}&collection=${colName}`);
       if (response.ok) {
         const data = await response.json();
         setSnapshots(data.snapshots);
@@ -163,7 +175,7 @@ export default function SnapshotManager() {
       showToast(data.message);
       setShowCreateModal(false);
       setSnapshotName(generateShortUUIDv7());
-      fetchSnapshots();
+      fetchSnapshots(selectedDatabase, selectedCollection);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '스냅샷 생성 중 오류가 발생했습니다.', 'error');
     }
@@ -264,7 +276,7 @@ export default function SnapshotManager() {
               </label>
               <select
                 value={selectedCollection}
-                onChange={(e) => setSelectedCollection(e.target.value)}
+                onChange={(e) => handleCollectionChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="">컬렉션을 선택하세요</option>
@@ -276,14 +288,6 @@ export default function SnapshotManager() {
               </select>
             </div>
           </div>
-          
-          <button
-            onClick={fetchSnapshots}
-            disabled={!selectedDatabase || !selectedCollection}
-            className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
-          >
-            스냅샷 조회
-          </button>
         </div>
 
         <ul className="divide-y divide-gray-200">
