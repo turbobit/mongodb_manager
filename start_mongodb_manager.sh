@@ -7,7 +7,11 @@
 screen -S mongodb_manager -X quit 2>/dev/null
 
 # 새로운 screen 세션 생성 및 npm start 실행
-screen -dmS mongodb_manager bash -c "npm run start; exec bash"
+screen -dmS mongodb_manager bash -c '
+echo "$(date): MongoDB Manager 시작 중..."
+npm run start
+echo "$(date): MongoDB Manager 종료됨"
+'
 
 echo "MongoDB Manager가 screen 세션 'mongodb_manager'에서 시작되었습니다."
 echo ""

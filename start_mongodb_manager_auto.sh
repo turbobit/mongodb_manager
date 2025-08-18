@@ -6,6 +6,8 @@
 # 기존 screen 세션이 있다면 종료
 screen -S mongodb_manager_auto -X quit 2>/dev/null
 
+# 새로운 screen 세션 생성 및 자동 재시작 함수 실행
+screen -dmS mongodb_manager_auto bash -c '
 # 자동 재시작 함수
 restart_app() {
     while true; do
@@ -24,8 +26,9 @@ restart_app() {
     done
 }
 
-# 새로운 screen 세션 생성 및 자동 재시작 함수 실행
-screen -dmS mongodb_manager_auto bash -c "restart_app; exec bash"
+# 함수 실행
+restart_app
+'
 
 echo "MongoDB Manager가 자동 재시작 모드로 시작되었습니다."
 echo "세션명: mongodb_manager_auto"
