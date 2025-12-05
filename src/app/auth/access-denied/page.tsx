@@ -4,6 +4,26 @@ import Link from 'next/link';
 import { signOut } from 'next-auth/react';
 
 export default function AccessDenied() {
+  const getAccessRestrictionText = () => {
+    const domains = (process.env.NEXT_PUBLIC_ALLOWED_DOMAINS || '')
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+    const emails = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '')
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    if (emails.length > 0 && domains.length > 0) {
+      return `다음 이메일 또는 도메인 계정만 사용할 수 있습니다: ${emails.join(', ')} / ${domains.map((d) => `@${d}`).join(', ')}`;
+    }
+    if (emails.length > 0) {
+      return `다음 이메일만 사용할 수 있습니다: ${emails.join(', ')}`;
+    }
+    const domainsDisplay = (domains.length > 0 ? domains : ['2weeks.co']).map((d) => `@${d}`).join(', ');
+    return `${domainsDisplay} 도메인 계정만 사용할 수 있습니다.`;
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full space-y-8">
@@ -17,7 +37,7 @@ export default function AccessDenied() {
             접근이 거부되었습니다
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            이 애플리케이션은 @2weeks.co 도메인 계정만 사용할 수 있습니다.
+            이 애플리케이션은 {getAccessRestrictionText()}
           </p>
         </div>
         
@@ -35,8 +55,8 @@ export default function AccessDenied() {
                     도메인 제한
                   </h3>
                   <div className="mt-2 text-sm text-yellow-700">
-                    <p>현재 로그인한 계정은 @2weeks.co 도메인이 아닙니다.</p>
-                    <p className="mt-1">올바른 계정으로 다시 로그인해주세요.</p>
+                    <p>현재 로그인한 계정은 허용된 범위가 아닙니다.</p>
+                    <p className="mt-1">허용 조건: {getAccessRestrictionText()}</p>
                   </div>
                 </div>
               </div>

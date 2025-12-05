@@ -8,6 +8,26 @@ export default function LandingPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
+  const getAccessRestrictionText = () => {
+    const domains = (process.env.NEXT_PUBLIC_ALLOWED_DOMAINS || '')
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+    const emails = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '')
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    if (emails.length > 0 && domains.length > 0) {
+      return `다음 이메일 또는 도메인 계정만 로그인할 수 있습니다: ${emails.join(', ')} / ${domains.map((d) => `@${d}`).join(', ')}`;
+    }
+    if (emails.length > 0) {
+      return `다음 이메일만 로그인할 수 있습니다: ${emails.join(', ')}`;
+    }
+    const domainsDisplay = (domains.length > 0 ? domains : ['2weeks.co']).map((d) => `@${d}`).join(', ');
+    return `${domainsDisplay} 도메인 계정만 로그인할 수 있습니다.`;
+  };
+
   useEffect(() => {
     if (status === 'authenticated') {
       router.push('/dashboard');
@@ -50,7 +70,7 @@ export default function LandingPage() {
                   접근 제한
                 </h3>
                 <p className="text-sm text-yellow-700 mt-1">
-                  @2weeks.co 도메인 계정만 로그인할 수 있습니다.
+                  {getAccessRestrictionText()}
                 </p>
               </div>
             </div>

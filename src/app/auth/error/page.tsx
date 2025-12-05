@@ -16,7 +16,7 @@ function AuthErrorContent() {
       case 'Configuration':
         return 'OAuth 설정 오류가 발생했습니다. 환경 변수를 확인해주세요.';
       case 'AccessDenied':
-        return '접근이 거부되었습니다. @2weeks.co 도메인 계정만 사용할 수 있습니다.';
+        return '접근이 거부되었습니다. 허용된 이메일 또는 도메인만 사용할 수 있습니다.';
       case 'OAuthSignin':
         return 'OAuth 로그인 과정에서 오류가 발생했습니다.';
       case 'OAuthCallback':
@@ -41,6 +41,25 @@ function AuthErrorContent() {
   };
 
   const isDomainRestrictionError = error === 'AccessDenied';
+  const getAccessRestrictionText = () => {
+    const domains = (process.env.NEXT_PUBLIC_ALLOWED_DOMAINS || '')
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+    const emails = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '')
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    if (emails.length > 0 && domains.length > 0) {
+      return `허용 조건: ${emails.join(', ')} / ${domains.map((d) => `@${d}`).join(', ')}`;
+    }
+    if (emails.length > 0) {
+      return `허용 이메일: ${emails.join(', ')}`;
+    }
+    const domainsDisplay = (domains.length > 0 ? domains : ['2weeks.co']).map((d) => `@${d}`).join(', ');
+    return `허용 도메인: ${domainsDisplay}`;
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -75,10 +94,10 @@ function AuthErrorContent() {
                   <div className="mt-2 text-sm text-red-700">
                     {isDomainRestrictionError ? (
                       <div>
-                        <p>이 애플리케이션은 @2weeks.co 도메인 계정만 사용할 수 있습니다.</p>
+                        <p>이 애플리케이션은 {getAccessRestrictionText()}</p>
                         <ul className="list-disc pl-5 mt-1 space-y-1">
-                          <li>올바른 @2weeks.co 계정으로 로그인해주세요</li>
-                          <li>다른 도메인 계정은 접근이 제한됩니다</li>
+                          <li>허용된 조건의 계정으로 로그인해주세요</li>
+                          <li>허용되지 않은 계정은 접근이 제한됩니다</li>
                         </ul>
                       </div>
                     ) : (
